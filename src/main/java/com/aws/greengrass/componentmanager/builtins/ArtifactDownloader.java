@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.greengrass.componentmanager.plugins;
+package com.aws.greengrass.componentmanager.builtins;
 
 import com.aws.greengrass.componentmanager.exceptions.ArtifactChecksumMismatchException;
 import com.aws.greengrass.componentmanager.exceptions.PackageDownloadException;
@@ -83,7 +83,7 @@ public abstract class ArtifactDownloader {
      * @throws PackageDownloadException if error occurred in download process
      */
     @SuppressWarnings({"PMD.AvoidCatchingGenericException", "PMD.AvoidRethrowingException"})
-    public final File downloadToPath() throws PackageDownloadException, IOException, InterruptedException {
+    public File download() throws PackageDownloadException, IOException, InterruptedException {
         MessageDigest messageDigest;
         try {
             if (artifact.getAlgorithm() == null) {
@@ -249,6 +249,36 @@ public abstract class ArtifactDownloader {
     protected String getErrorString(String reason) {
         return String.format(ARTIFACT_DOWNLOAD_EXCEPTION_FMT, artifact.getArtifactUri(),
                 identifier.getName(), identifier.getVersion().toString()) + reason;
+    }
+
+    /**
+     * Check if an instance of implemented class supports checking component store size depending on
+     * if the artifact is located in greengrass artifact store or third party.
+     *
+     * @return evaluation result
+     */
+    public boolean checkComponentStoreSize() {
+        return true;
+    }
+
+    /**
+     * Check if an instance of implemented class supports setting file permissions depending on
+     * if the artifact is located in greengrass artifact store or third party.
+     *
+     * @return evaluation result
+     */
+    public boolean canSetFilePermissions() {
+        return true;
+    }
+
+    /**
+     * Check if an instance of implemented class supports unarchiving the artifact depending on
+     * if the artifact is located in greengrass artifact store or third party.
+     *
+     * @return evaluation result
+     */
+    public boolean canUnarchiveArtifact() {
+        return true;
     }
 }
 

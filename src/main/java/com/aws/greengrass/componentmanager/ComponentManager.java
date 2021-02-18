@@ -7,8 +7,11 @@ package com.aws.greengrass.componentmanager;
 
 import com.amazon.aws.iot.greengrass.component.common.ComponentType;
 import com.amazon.aws.iot.greengrass.component.common.Unarchive;
+import com.aws.greengrass.componentmanager.builtins.ArtifactDownloader;
+import com.aws.greengrass.componentmanager.builtins.ArtifactDownloaderFactory;
 import com.aws.greengrass.componentmanager.converter.RecipeLoader;
 import com.aws.greengrass.componentmanager.exceptions.InvalidArtifactUriException;
+import com.aws.greengrass.componentmanager.exceptions.MissingRequiredComponentsException;
 import com.aws.greengrass.componentmanager.exceptions.NoAvailableComponentVersionException;
 import com.aws.greengrass.componentmanager.exceptions.PackageDownloadException;
 import com.aws.greengrass.componentmanager.exceptions.PackageLoadingException;
@@ -19,8 +22,7 @@ import com.aws.greengrass.componentmanager.models.ComponentIdentifier;
 import com.aws.greengrass.componentmanager.models.ComponentMetadata;
 import com.aws.greengrass.componentmanager.models.ComponentRecipe;
 import com.aws.greengrass.componentmanager.models.RecipeMetadata;
-import com.aws.greengrass.componentmanager.plugins.ArtifactDownloader;
-import com.aws.greengrass.componentmanager.plugins.ArtifactDownloaderFactory;
+import com.aws.greengrass.componentmanager.plugins.Image;
 import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.dependency.InjectionActions;
 import com.aws.greengrass.deployment.DeviceConfiguration;
@@ -65,6 +67,7 @@ import javax.inject.Inject;
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.PREV_VERSION_CONFIG_KEY;
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.VERSION_CONFIG_KEY;
 import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.ANY_VERSION;
+import static com.aws.greengrass.tes.TokenExchangeService.TOKEN_EXCHANGE_SERVICE_TOPICS;
 import static org.apache.commons.io.FileUtils.ONE_MB;
 
 public class ComponentManager implements InjectionActions {
@@ -335,6 +338,45 @@ public class ComponentManager implements InjectionActions {
         });
     }
 
+    /**
+     * Check if all plugins that are required to execute pre-merge steps like download for other components are included
+     * in the deployment.
+     *
+     * @param componentIds deployment dependency closure
+     * @throws MissingRequiredComponentsException when any required plugins are not included
+     * @throws PackageLoadingException            when other errors occur
+     */
+    public void checkPreparePackagesPrerequisites(List<ComponentIdentifier> componentIds)
+            throws MissingRequiredComponentsException, PackageLoadingException {
+        List<String> componentNames =
+                componentIds.stream().map(ComponentIdentifier::getName).collect(Collectors.toList());
+        for (ComponentIdentifier componentId : componentIds) {
+            Optional<ComponentRecipe> recipeOption = componentStore.findPackageRecipe(componentId);
+            if (!recipeOption.isPresent()) {
+                throw new PackageLoadingException(
+                        String.format("Unexpected error - cannot find recipe for a component to be prepared - %s",
+                                componentId));
+            }
+            for (ComponentArtifact artifact : recipeOption.get().getArtifacts()) {
+                // TODO : Make this more generic & use dedicated component type
+                if (artifact.getArtifactUri().getScheme().equalsIgnoreCase(ArtifactDownloaderFactory.DOCKER_SCHEME)) {
+                    if (!componentNames.contains("aws.greengrass.DockerContainerManager")) {
+                        throw new MissingRequiredComponentsException(
+                                "Special components with docker artifacts must include the "
+                                        + "aws.greengrass.DockerContainerManager download plugin in the deployment");
+                    }
+                    Image image = Image.fromArtifactUri(artifact.getArtifactUri());
+                    if (image.getRegistry().isEcrRegistry() && image.getRegistry().isPrivateRegistry()
+                            && !componentNames.contains(TOKEN_EXCHANGE_SERVICE_TOPICS)) {
+                        throw new MissingRequiredComponentsException(
+                                "Components with private ECR docker artifacts must include "
+                                        + "the aws.greengrass.TokenExchangeService plugin in the deployment");
+                    }
+                }
+            }
+        }
+    }
+
     private void preparePackage(ComponentIdentifier componentIdentifier)
             throws PackageLoadingException, PackageDownloadException, InvalidArtifactUriException,
             InterruptedException {
@@ -383,55 +425,64 @@ public class ComponentManager implements InjectionActions {
                             String.format("Disk space critical: %d bytes usable, %d bytes minimum allowed",
                                     usableSpaceBytes, DEFAULT_MIN_DISK_AVAIL_BYTES));
                 }
-                long downloadSize = downloader.getDownloadSize();
-                long storeContentSize = componentStore.getContentSize();
-                if (storeContentSize + downloadSize > getConfiguredMaxSize()) {
-                    throw new SizeLimitException(String.format(
-                            "Component store size limit reached: %d bytes existing, %d bytes needed"
-                                    + ", %d bytes maximum allowed total", storeContentSize, downloadSize,
-                            getConfiguredMaxSize()));
+                if (downloader.checkComponentStoreSize()) {
+                    long downloadSize = downloader.getDownloadSize();
+                    long storeContentSize = componentStore.getContentSize();
+                    if (storeContentSize + downloadSize > getConfiguredMaxSize()) {
+                        throw new SizeLimitException(String.format(
+                                "Component store size limit reached: %d bytes existing, %d bytes needed"
+                                        + ", %d bytes maximum allowed total", storeContentSize, downloadSize,
+                                getConfiguredMaxSize()));
+                    }
                 }
                 try {
-                    downloader.downloadToPath();
+                    downloader.download();
                 } catch (IOException e) {
                     throw new PackageDownloadException(
                             String.format("Failed to download component %s artifact %s", componentIdentifier, artifact),
                             e);
                 }
             }
-            File artifactFile = downloader.getArtifactFile();
-            if (artifactFile != null) {
-                try {
-                    Permissions.setArtifactPermission(artifactFile.toPath(),
-                            artifact.getPermission().toFileSystemPermission());
-                } catch (IOException e) {
-                    throw new PackageDownloadException(
-                            String.format("Failed to change permissions of component %s artifact %s",
-                                    componentIdentifier, artifact), e);
-                }
-            }
-            Unarchive unarchive = artifact.getUnarchive();
-            if (unarchive == null) {
-                unarchive = Unarchive.NONE;
-            }
-
-            if (artifactFile != null && !unarchive.equals(Unarchive.NONE)) {
-                try {
-                    Path unarchivePath =
-                            nucleusPaths.unarchiveArtifactPath(componentIdentifier, getFileName(artifactFile));
-                    unarchiver.unarchive(unarchive, artifactFile, unarchivePath);
+            if (downloader.canSetFilePermissions()) {
+                File artifactFile = downloader.getArtifactFile();
+                if (artifactFile != null) {
                     try {
-                        Permissions.setArtifactPermission(unarchivePath,
+                        Permissions.setArtifactPermission(artifactFile.toPath(),
                                 artifact.getPermission().toFileSystemPermission());
                     } catch (IOException e) {
                         throw new PackageDownloadException(
                                 String.format("Failed to change permissions of component %s artifact %s",
                                         componentIdentifier, artifact), e);
                     }
-                } catch (IOException e) {
-                    throw new PackageDownloadException(
-                            String.format("Failed to unarchive component %s artifact %s", componentIdentifier,
-                                    artifact), e);
+                }
+            }
+            if (downloader.canUnarchiveArtifact()) {
+                Unarchive unarchive = artifact.getUnarchive();
+                if (unarchive == null) {
+                    unarchive = Unarchive.NONE;
+                }
+
+                File artifactFile = downloader.getArtifactFile();
+                if (artifactFile != null && !unarchive.equals(Unarchive.NONE)) {
+                    try {
+                        Path unarchivePath =
+                                nucleusPaths.unarchiveArtifactPath(componentIdentifier, getFileName(artifactFile));
+                        unarchiver.unarchive(unarchive, artifactFile, unarchivePath);
+                        if (downloader.canSetFilePermissions()) {
+                            try {
+                                Permissions.setArtifactPermission(unarchivePath,
+                                        artifact.getPermission().toFileSystemPermission());
+                            } catch (IOException e) {
+                                throw new PackageDownloadException(
+                                        String.format("Failed to change permissions of component %s artifact %s",
+                                                componentIdentifier, artifact), e);
+                            }
+                        }
+                    } catch (IOException e) {
+                        throw new PackageDownloadException(
+                                String.format("Failed to unarchive component %s artifact %s", componentIdentifier,
+                                        artifact), e);
+                    }
                 }
             }
         }

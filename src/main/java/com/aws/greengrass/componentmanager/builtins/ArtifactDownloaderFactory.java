@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.greengrass.componentmanager.plugins;
+package com.aws.greengrass.componentmanager.builtins;
 
 import com.aws.greengrass.componentmanager.ComponentStore;
 import com.aws.greengrass.componentmanager.GreengrassComponentServiceClientFactory;
@@ -11,6 +11,7 @@ import com.aws.greengrass.componentmanager.exceptions.InvalidArtifactUriExceptio
 import com.aws.greengrass.componentmanager.exceptions.PackageLoadingException;
 import com.aws.greengrass.componentmanager.models.ComponentArtifact;
 import com.aws.greengrass.componentmanager.models.ComponentIdentifier;
+import com.aws.greengrass.componentmanager.plugins.DockerImageDownloader;
 import com.aws.greengrass.util.S3SdkClientFactory;
 
 import java.net.URI;
@@ -20,6 +21,7 @@ import javax.inject.Inject;
 public class ArtifactDownloaderFactory {
     private static final String GREENGRASS_SCHEME = "GREENGRASS";
     private static final String S3_SCHEME = "S3";
+    public static final String DOCKER_SCHEME = "DOCKER";
 
     private final S3SdkClientFactory s3ClientFactory;
 
@@ -63,6 +65,11 @@ public class ArtifactDownloaderFactory {
         }
         if (S3_SCHEME.equals(scheme)) {
             return new S3Downloader(s3ClientFactory, identifier, artifact, artifactDir);
+        }
+        // TODO : Needs to be moved out into a different mechanism where when loaded via a plugin,
+        //  an artifact downloader can register itself and be discoverable here.
+        if (DOCKER_SCHEME.equals(scheme)) {
+            return new DockerImageDownloader(identifier, artifact, artifactDir);
         }
         throw new PackageLoadingException(String.format("artifact URI scheme %s is not supported yet", scheme));
     }
