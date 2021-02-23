@@ -49,7 +49,7 @@ class MqttTest extends BaseE2ETestCase {
 
     @Test
     void GIVEN_mqttclient_WHEN_subscribe_and_publish_THEN_receives_all_messages()
-            throws IOException, ExecutionException, InterruptedException, TimeoutException, DeviceConfigurationException, MqttRequestException {
+            throws IOException, ExecutionException, InterruptedException, TimeoutException, DeviceConfigurationException {
         kernel = new Kernel().parseArgs("-r", tempRootDir.toAbsolutePath().toString());
         setDefaultRunWithUser(kernel);
         deviceProvisioningHelper.updateKernelConfigWithIotConfiguration(kernel, thingInfo, GAMMA_REGION.toString(),

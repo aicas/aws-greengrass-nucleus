@@ -39,7 +39,7 @@ class WrapperMqttClientConnectionTest {
     private static final String TEST_TOPIC = "testTopic";
 
     @BeforeEach
-    void beforeEach() throws InterruptedException, ExecutionException, TimeoutException, MqttRequestException {
+    void beforeEach() throws InterruptedException, ExecutionException, TimeoutException {
         lenient().doNothing().when(mockMqttClient).subscribe(subRequestCaptor.capture());
         lenient().doNothing().when(mockMqttClient).unsubscribe(unsubRequestCaptor.capture());
         lenient().when(mockMqttClient.publish(pubRequestCaptor.capture()))
