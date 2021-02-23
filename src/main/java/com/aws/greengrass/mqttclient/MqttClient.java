@@ -352,12 +352,17 @@ public class MqttClient implements Closeable {
      * @throws ExecutionException   if an error occurs
      * @throws InterruptedException if the thread is interrupted while subscribing
      * @throws TimeoutException     if the request times out
-     * @throws MqttRequestException if request topic is not valid
      */
     @SuppressWarnings("PMD.CloseResource")
     public synchronized void subscribe(SubscribeRequest request)
-            throws ExecutionException, InterruptedException, TimeoutException, MqttRequestException {
-        isValidRequestTopic(request.getTopic());
+            throws ExecutionException, InterruptedException, TimeoutException {
+
+        try {
+            isValidRequestTopic(request.getTopic());
+        } catch (MqttRequestException e) {
+            logger.atError().log("Invalid subscribe request: {}", e.getMessage());
+            throw new ExecutionException(e);
+        }
 
         if (!deviceConfiguration.isDeviceConfiguredToTalkToCloud()) {
             logger.atError().kv(TOPIC_KEY, request.getTopic())
@@ -425,11 +430,9 @@ public class MqttClient implements Closeable {
      * @throws ExecutionException   if an error occurs
      * @throws InterruptedException if the thread is interrupted while unsubscribing
      * @throws TimeoutException     if the request times out
-     * @throws MqttRequestException if request topic is not valid
      */
     public synchronized void unsubscribe(UnsubscribeRequest request)
-            throws ExecutionException, InterruptedException, TimeoutException, MqttRequestException {
-        isValidRequestTopic(request.getTopic());
+            throws ExecutionException, InterruptedException, TimeoutException {
         // Use the write lock because we're modifying the subscriptions and trying to consolidate them
         try (LockScope scope = LockScope.lock(connectionLock.writeLock())) {
             Set<Map.Entry<MqttTopic, AwsIotMqttClient>> deadSubscriptionTopics;

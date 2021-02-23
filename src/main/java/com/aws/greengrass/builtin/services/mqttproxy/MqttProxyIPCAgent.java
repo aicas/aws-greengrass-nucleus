@@ -10,7 +10,6 @@ import com.aws.greengrass.authorization.exceptions.AuthorizationException;
 import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.mqttclient.MqttClient;
-import com.aws.greengrass.mqttclient.MqttRequestException;
 import com.aws.greengrass.mqttclient.MqttTopic;
 import com.aws.greengrass.mqttclient.PublishRequest;
 import com.aws.greengrass.mqttclient.SubscribeRequest;
@@ -146,7 +145,7 @@ public class MqttProxyIPCAgent {
 
                 try {
                     mqttClient.unsubscribe(unsubscribeRequest);
-                } catch (ExecutionException | InterruptedException | TimeoutException | MqttRequestException e) {
+                } catch (ExecutionException | InterruptedException | TimeoutException e) {
                     LOGGER.atError().cause(e).kv(TOPIC_KEY, subscribedTopic).kv(COMPONENT_NAME, serviceName)
                             .log("Stream closed but unable to unsubscribe from topic");
                 }
@@ -173,7 +172,7 @@ public class MqttProxyIPCAgent {
 
                 try {
                     mqttClient.subscribe(subscribeRequest);
-                } catch (ExecutionException | InterruptedException | TimeoutException | MqttRequestException e) {
+                } catch (ExecutionException | InterruptedException | TimeoutException e) {
                     LOGGER.atError().cause(e).kv(TOPIC_KEY, topic).kv(COMPONENT_NAME, serviceName)
                             .log("Unable to subscribe to topic");
                     throw new ServiceError(String.format("Subscribe to topic %s failed with error %s", topic, e));
