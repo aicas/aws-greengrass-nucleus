@@ -9,6 +9,7 @@ import com.aws.greengrass.deployment.exceptions.DeviceConfigurationException;
 import com.aws.greengrass.integrationtests.e2e.BaseE2ETestCase;
 import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.mqttclient.MqttClient;
+import com.aws.greengrass.mqttclient.MqttRequestException;
 import com.aws.greengrass.mqttclient.PublishRequest;
 import com.aws.greengrass.mqttclient.SubscribeRequest;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
@@ -48,7 +49,7 @@ class MqttTest extends BaseE2ETestCase {
 
     @Test
     void GIVEN_mqttclient_WHEN_subscribe_and_publish_THEN_receives_all_messages()
-            throws IOException, ExecutionException, InterruptedException, TimeoutException, DeviceConfigurationException {
+            throws IOException, ExecutionException, InterruptedException, TimeoutException, DeviceConfigurationException, MqttRequestException {
         kernel = new Kernel().parseArgs("-r", tempRootDir.toAbsolutePath().toString());
         setDefaultRunWithUser(kernel);
         deviceProvisioningHelper.updateKernelConfigWithIotConfiguration(kernel, thingInfo, GAMMA_REGION.toString(),

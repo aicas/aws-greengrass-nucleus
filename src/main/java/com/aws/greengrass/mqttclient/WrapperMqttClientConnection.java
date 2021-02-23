@@ -72,7 +72,7 @@ public class WrapperMqttClientConnection extends MqttClientConnection {
         try {
             mqttClient.subscribe(request);
             future.complete(0);
-        } catch (InterruptedException | TimeoutException e) {
+        } catch (InterruptedException | TimeoutException | MqttRequestException e) {
             unsubscriptions.remove(request.getTopic());
             future.completeExceptionally(e);
         } catch (ExecutionException e) {
@@ -108,7 +108,7 @@ public class WrapperMqttClientConnection extends MqttClientConnection {
             mqttClient.unsubscribe(request);
             unsubscriptions.remove(topic);
             future.complete(0);
-        } catch (InterruptedException | TimeoutException e) {
+        } catch (InterruptedException | TimeoutException | MqttRequestException e) {
             future.completeExceptionally(e);
         } catch (ExecutionException e) {
             future.completeExceptionally(e.getCause());

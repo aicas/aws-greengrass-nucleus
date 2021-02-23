@@ -313,8 +313,8 @@ public class MqttClient implements Closeable {
      * @param executorService     executor service
      */
     public MqttClient(DeviceConfiguration deviceConfiguration, Spool spool, boolean mqttOnline,
-                         Function<ClientBootstrap, AwsIotMqttConnectionBuilder> builderProvider,
-                         ExecutorService executorService) {
+                      Function<ClientBootstrap, AwsIotMqttConnectionBuilder> builderProvider,
+                      ExecutorService executorService) {
 
         this.deviceConfiguration = deviceConfiguration;
         mqttTopics = this.deviceConfiguration.getMQTTNamespace();
@@ -352,10 +352,13 @@ public class MqttClient implements Closeable {
      * @throws ExecutionException   if an error occurs
      * @throws InterruptedException if the thread is interrupted while subscribing
      * @throws TimeoutException     if the request times out
+     * @throws MqttRequestException if request topic is not valid
      */
     @SuppressWarnings("PMD.CloseResource")
     public synchronized void subscribe(SubscribeRequest request)
-            throws ExecutionException, InterruptedException, TimeoutException {
+            throws ExecutionException, InterruptedException, TimeoutException, MqttRequestException {
+        isValidRequestTopic(request.getTopic());
+
         if (!deviceConfiguration.isDeviceConfiguredToTalkToCloud()) {
             logger.atError().kv(TOPIC_KEY, request.getTopic())
                     .log("Cannot subscribe because device is configured to run offline");
@@ -422,9 +425,11 @@ public class MqttClient implements Closeable {
      * @throws ExecutionException   if an error occurs
      * @throws InterruptedException if the thread is interrupted while unsubscribing
      * @throws TimeoutException     if the request times out
+     * @throws MqttRequestException if request topic is not valid
      */
     public synchronized void unsubscribe(UnsubscribeRequest request)
-            throws ExecutionException, InterruptedException, TimeoutException {
+            throws ExecutionException, InterruptedException, TimeoutException, MqttRequestException {
+        isValidRequestTopic(request.getTopic());
         // Use the write lock because we're modifying the subscriptions and trying to consolidate them
         try (LockScope scope = LockScope.lock(connectionLock.writeLock())) {
             Set<Map.Entry<MqttTopic, AwsIotMqttClient>> deadSubscriptionTopics;
@@ -531,7 +536,7 @@ public class MqttClient implements Closeable {
         isValidRequestTopic(topic);
     }
 
-    private void isValidRequestTopic(String topic) throws MqttRequestException {
+    protected void isValidRequestTopic(String topic) throws MqttRequestException {
         if (Pattern.matches(reservedTopicTemplate, topic.toLowerCase())) {
             // remove the prefix of "$aws/rules/rule-name/"
             topic = topic.toLowerCase().split(prefixOfReservedTopic, 2)[1];
